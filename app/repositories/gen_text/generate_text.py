@@ -15,7 +15,7 @@ _max_retries = 5
 
 def _generate_response(
     prompt: str,
-    ) -> str:
+) -> str:
     """
     Generates a response from the LLM provider (OpenAI or Gemini) based on the provided prompt.
 
@@ -39,7 +39,9 @@ def _generate_response(
         elif llm_provider == "gemini":
             api_key = settings.gemini_api_key
             model_name = settings.gemini_model_name
-            base_url = "***"
+            base_url = settings.gemini_base_url
+            if not base_url:
+                base_url = "https://generativelanguage.googleapis.com"
         else:
             raise ValueError(
                 "llm_provider is not set, please set it in the config.toml file."
@@ -132,7 +134,9 @@ def _generate_response(
 
 
 def generate_script(
-    video_subject: str, language: str = "", paragraph_number: int = 1,
+    video_subject: str,
+    language: str = "",
+    paragraph_number: int = 1,
 ) -> str:
     """
     Generates a video script based on the provided video subject, language, and paragraph count.
@@ -146,15 +150,18 @@ def generate_script(
         str: The generated video script.
     """  # noqa: E501
 
-    prompt = GEN_VIDEO_SCRIPT.format(video_subject = video_subject,paragraph_number = paragraph_number)
+    prompt = GEN_VIDEO_SCRIPT.format(
+        video_subject=video_subject, paragraph_number=paragraph_number
+    )
 
     if language:
         prompt += f"\n- language: {language}"
 
     final_script = ""
+    # Generate the specified number of paragraphs
     logger.info(f"subject: {video_subject}")
 
-    def format_response(response:str) ->str:
+    def format_response(response: str) -> str:
         """
         Cleans up the response by removing unnecessary formatting and splitting it into paragraphs.
 
@@ -164,7 +171,7 @@ def generate_script(
         Returns:
             str: The cleaned response split into paragraphs.
         """
-       # Remove asterisks, hashes, and markdown syntax
+        # Remove asterisks, hashes, and markdown syntax
         response = response.replace("*", "").replace("#", "")
         response = re.sub(r"\[.*\]", "", response)
         response = re.sub(r"\(.*\)", "", response)
@@ -174,6 +181,8 @@ def generate_script(
 
         return "\n\n".join(paragraphs)
 
+    if not final_script:
+        logger.info(f"paragraphs: {paragraph_number}")
     for i in range(_max_retries):
         try:
             response = _generate_response(prompt=prompt)
@@ -181,7 +190,6 @@ def generate_script(
                 final_script = format_response(response)
             else:
                 logging.error("gpt returned an empty response")
-
 
             if final_script:
                 break
@@ -210,9 +218,9 @@ def generate_terms(video_subject: str, video_script: str, amount: int = 5) -> Li
         List[str]: A list of search terms.
     """  # noqa: E501
 
-
-    prompt =  GEN_VIDEO_TERM.format(amount= amount,video_subject = video_subject,
-                                    video_script = video_script)
+    prompt = GEN_VIDEO_TERM.format(
+        amount=amount, video_subject=video_subject, video_script=video_script
+    )
 
     logger.info(f"subject: {video_subject}")
 
@@ -249,4 +257,3 @@ def generate_terms(video_subject: str, video_script: str, amount: int = 5) -> Li
 
     logger.success(f"completed: \n{search_terms}")
     return search_terms
-

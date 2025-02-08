@@ -9,7 +9,7 @@ from loguru import logger
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from app.core.settings import settings
-from app.schemas.schemas import MaterialInfo, VideoAspect, VideoConcatMode
+from app.web.api.gen_tvc.schemas import MaterialInfo, VideoAspect, VideoConcatMode
 from app.utils import string_utils, utils
 
 requested_count = 0

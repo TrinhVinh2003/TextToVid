@@ -1,4 +1,5 @@
 import math
+import traceback
 import os.path
 import re
 from os import path
@@ -8,7 +9,7 @@ from loguru import logger
 from app.core.settings import settings
 from app.repositories.gen_text.generate_text import generate_script, generate_terms
 from app.repositories.gen_tvc import material, subtitle, video, voice
-from app.schemas.schemas import VideoConcatMode, VideoParams
+from app.web.api.gen_tvc.schemas import VideoConcatMode, VideoParams
 from app.services.manager import state as sm
 from app.utils import const, string_utils, utils
 
@@ -172,7 +173,7 @@ def generate_final_videos(
     downloaded_videos: list,
     audio_file: str,
     subtitle_path: str,
-    ):
+):
     final_video_paths = []
     combined_video_paths = []
     video_concat_mode = (
@@ -202,13 +203,19 @@ def generate_final_videos(
         final_video_path = path.join(utils.task_dir(task_id), f"final-{index}.mp4")
 
         logger.info(f"\n\n## generating video: {index} => {final_video_path}")
-        video.generate_video(
-            video_path=combined_video_path,
-            audio_path=audio_file,
-            subtitle_path=subtitle_path,
-            output_file=final_video_path,
-            params=params,
-        )
+        try:
+            video.generate_video(
+                video_path=combined_video_path,
+                audio_path=audio_file,
+                subtitle_path=subtitle_path,
+                output_file=final_video_path,
+                params=params,
+            )
+        except Exception as e:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            logger.error(f"failed to generate video: {index}")
+            logger.error(traceback.format_exc())
+            return None, None
 
         _progress += 50 / params.video_count / 2
         sm.state.update_task(task_id, progress=_progress)
@@ -223,7 +230,7 @@ def start(
     task_id: str,
     params: VideoParams,
     stop_at: str = "video",
-    )-> dict:
+) -> dict:
     """
     Start the video generation process, executing in stages (script, terms, audio, etc.).
     Stops at the specified stage if indicated.

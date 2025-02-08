@@ -106,7 +106,9 @@ class VideoParams(BaseModel):
     video_count: Optional[int] = 1
 
     video_source: Optional[str] = "pexels"
-    video_materials: Optional[List[MaterialInfo]] = None  # Materials used to generate the video
+    video_materials: Optional[List[MaterialInfo]] = (
+        None  # Materials used to generate the video
+    )
 
     video_language: Optional[str] = ""  # auto detect
 
@@ -123,12 +125,15 @@ class VideoParams(BaseModel):
     font_name: Optional[str] = "STHeitiMedium.ttc"
     text_fore_color: Optional[str] = "#FFFFFF"
     text_background_color: Union[bool, str] = True
+    text_highlight_color: Optional[str] = "#FFFF00"
 
     font_size: int = 60
     stroke_color: Optional[str] = "#000000"
     stroke_width: float = 1.5
     n_threads: Optional[int] = 2
     paragraph_number: Optional[int] = 1
+
+    enable_cta: Optional[bool] = False
 
 
 class SubtitleRequest(BaseModel):

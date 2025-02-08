@@ -12,7 +12,7 @@ from loguru import logger
 
 from app.core.settings import settings
 from app.repositories.gen_tvc import task as tm
-from app.schemas.schemas import (
+from app.web.api.gen_tvc.schemas import (
     AudioRequest,
     BgmRetrieveResponse,
     BgmUploadResponse,
@@ -52,7 +52,9 @@ else:
 
 @router.post("/videos", response_model=TaskResponse, summary="Generate a short video")
 def create_video(
-    background_tasks: BackgroundTasks, request: Request, body: TaskVideoRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    body: TaskVideoRequest,
 ) -> TaskResponse:
     """
     Endpoint to create a short video based on provided request data.
@@ -88,7 +90,9 @@ def create_subtitle(
 
 @router.post("/audio", response_model=TaskResponse, summary="Generate audio only")
 def create_audio(
-    background_tasks: BackgroundTasks, request: Request, body: AudioRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    body: AudioRequest,
 ) -> TaskResponse:
     """
     Endpoint to generate audio based on provided request data.
@@ -108,7 +112,7 @@ def create_task(
     request: Request,
     body: Union[TaskVideoRequest, SubtitleRequest, AudioRequest],
     stop_at: str,
-)  -> dict[str, int]:
+) -> dict[str, int]:
     """
     Helper function to initiate task creation for video, subtitle, or audio processing.
 
@@ -116,7 +120,7 @@ def create_task(
         request (Request): The incoming request.
         body (Union[TaskVideoRequest, SubtitleRequest, AudioRequest]): The request body
         with processing parameters.
-        stop_at (str): The specific step to stop at (either "video", "subtitle", or 
+        stop_at (str): The specific step to stop at (either "video", "subtitle", or
         "audio").
 
     Returns:
@@ -136,7 +140,9 @@ def create_task(
         return utils.get_response(200, task)
     except ValueError as e:
         raise HttpException(
-            task_id=task_id, status_code=400, message=f"{request_id}: {e!s}",
+            task_id=task_id,
+            status_code=400,
+            message=f"{request_id}: {e!s}",
         ) from e
 
 
@@ -169,7 +175,7 @@ def get_task(
     if task:
         task_dir = utils.task_dir()
 
-        def file_to_uri(file:str)->str:
+        def file_to_uri(file: str) -> str:
             if not file.startswith(endpoint):
                 _uri_path = v.replace(task_dir, "tasks").replace("\\", "/")
                 _uri_path = f"{endpoint}/{_uri_path}"
@@ -202,9 +208,8 @@ def get_task(
     summary="Delete a generated short video task",
 )
 def delete_video(
-    request: Request,
-    task_id: str = Path(..., description="Task ID")
-    ) -> TaskDeletionResponse:
+    request: Request, task_id: str = Path(..., description="Task ID")
+) -> TaskDeletionResponse:
     """
     Endpoint to delete a generated video task and its associated files.
 
@@ -235,7 +240,7 @@ def delete_video(
 @router.get(
     "/musics", response_model=BgmRetrieveResponse, summary="Retrieve local BGM files"
 )
-def get_bgm_list(request: Request) ->BgmRetrieveResponse:
+def get_bgm_list(request: Request) -> BgmRetrieveResponse:
     """
     Endpoint to retrieve a list of available background music (BGM) files.
 
@@ -269,7 +274,7 @@ def get_bgm_list(request: Request) ->BgmRetrieveResponse:
 def upload_bgm_file(
     request: Request,
     file: UploadFile = File(...),
-    ) ->  BgmUploadResponse:
+) -> BgmUploadResponse:
     """
     Endpoint to upload a background music (BGM) file to the server.
 
@@ -294,7 +299,9 @@ def upload_bgm_file(
         return utils.get_response(200, response)
 
     raise HttpException(
-        "", status_code=400, message=f"{request_id}: Only *.mp3 files can be uploaded",
+        "",
+        status_code=400,
+        message=f"{request_id}: Only *.mp3 files can be uploaded",
     )
 
 
@@ -302,7 +309,7 @@ def upload_bgm_file(
 async def stream_video(
     request: Request,
     file_path: str,
-    ) -> StreamingResponse:
+) -> StreamingResponse:
     """
     Endpoint to stream a video file in chunks.
 
@@ -330,7 +337,7 @@ async def stream_video(
             end = video_size - 1
         length = end - start + 1
 
-    def file_iterator(file_path:str, offset:int =0, bytes_to_read =None):
+    def file_iterator(file_path: str, offset: int = 0, bytes_to_read=None):
         with open(file_path, "rb") as f:
             f.seek(offset, os.SEEK_SET)
             remaining = bytes_to_read or video_size
@@ -354,7 +361,7 @@ async def stream_video(
 
 
 @router.get("/download/{file_path:path}")
-async def download_video(_: Request, file_path: str)-> FileResponse:
+async def download_video(_: Request, file_path: str) -> FileResponse:
     """
     Endpoint to download a video file.
 
