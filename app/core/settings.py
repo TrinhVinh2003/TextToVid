@@ -54,21 +54,21 @@ class Settings(BaseSettings):
     # Path to the directory with media
     media_dir: str = "media"
 
-
     llm_provider: str
 
-    #open api key
+    # open api key
     open_api_key: str
     openai_base_url: str
     openai_model_name: str
     # gemeni api key
     gemini_api_key: str
+    gemini_base_url: str
     gemini_model_name: str
 
     # Pexel API
     pexels_api: str
 
-    max_concurrent_tasks:int
+    max_concurrent_tasks: int
 
     # Redis server
     enable_redis: bool = False
@@ -76,7 +76,6 @@ class Settings(BaseSettings):
     redis_port: str
     redis_db: str
     redis_password: str
-
 
     @property
     def db_url(self) -> URL:

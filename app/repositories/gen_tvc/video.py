@@ -2,7 +2,7 @@ import glob
 import os
 import random
 from typing import List
-
+import numpy as np
 from loguru import logger
 from moviepy import (
     AudioFileClip,
@@ -16,10 +16,16 @@ from moviepy import (
     concatenate_videoclips,
 )
 from moviepy.video.tools.subtitles import SubtitlesClip
-from PIL import ImageFont
+from PIL import ImageFont, ImageDraw, Image, ImageFilter
 
-from app.schemas.schemas import MaterialInfo, VideoAspect, VideoConcatMode, VideoParams
+from app.web.api.gen_tvc.schemas import (
+    MaterialInfo,
+    VideoAspect,
+    VideoConcatMode,
+    VideoParams,
+)
 from app.utils import const, utils
+from moviepy.video.fx import HeadBlur
 
 
 def get_bgm_file(bgm_type: str = "random", bgm_file: str = ""):
@@ -240,7 +246,7 @@ def generate_video(
 
         logger.info(f"using font: {font_path}")
 
-    def create_text_clip(subtitle_item):
+    def create_line_text_clip(subtitle_item):
         params.font_size = int(params.font_size)
         params.stroke_width = int(params.stroke_width)
         phrase = subtitle_item[1]
@@ -248,7 +254,8 @@ def generate_video(
         wrapped_txt, txt_height = wrap_text(
             phrase, max_width=max_width, font=font_path, fontsize=params.font_size
         )
-        _clip = TextClip(
+        # Create the base clip with the whole sentence
+        base_clip = TextClip(
             text=wrapped_txt,
             font=font_path,
             font_size=params.font_size,
@@ -258,26 +265,94 @@ def generate_video(
             stroke_width=params.stroke_width,
         )
         duration = subtitle_item[0][1] - subtitle_item[0][0]
-        _clip = _clip.with_start(subtitle_item[0][0])
-        _clip = _clip.with_end(subtitle_item[0][1])
-        _clip = _clip.with_duration(duration)
+        base_clip = base_clip.with_start(subtitle_item[0][0])
+        base_clip = base_clip.with_end(subtitle_item[0][1])
+        base_clip = base_clip.with_duration(duration)
         if params.subtitle_position == "bottom":
-            _clip = _clip.with_position(("center", video_height * 0.95 - _clip.h))
+            base_clip = base_clip.with_position(
+                ("center", video_height * 0.95 - base_clip.h)
+            )
         elif params.subtitle_position == "top":
-            _clip = _clip.with_position(("center", video_height * 0.05))
+            base_clip = base_clip.with_position(("center", video_height * 0.05))
         elif params.subtitle_position == "custom":
             # Ensure the subtitle is fully within the screen bounds
             margin = 10  # Additional margin, in pixels
-            max_y = video_height - _clip.h - margin
+            max_y = video_height - base_clip.h - margin
             min_y = margin
-            custom_y = (video_height - _clip.h) * (params.custom_position / 100)
+            custom_y = (video_height - base_clip.h) * (params.custom_position / 100)
             custom_y = max(
                 min_y, min(custom_y, max_y)
             )  # Constrain the y value within the valid range
-            _clip = _clip.with_position(("center", custom_y))
+            base_clip = base_clip.with_position(("center", custom_y))
         else:  # center
-            _clip = _clip.with_position(("center", "center"))
-        return _clip
+            base_clip = base_clip.with_position(("center", "center"))
+        # logger.info(f"base clip duration: {base_clip.duration}")
+        return base_clip
+
+    def create_word_text_clip(base_clip, subtitle_item):
+        params.font_size = int(params.font_size)
+        params.stroke_width = int(params.stroke_width)
+
+        # Split into words
+        words = subtitle_item[1].split()
+        word_clips = []
+        start_time = subtitle_item[0][0]
+        word_duration = base_clip.duration / len(words)
+        # word_duration = max(base_clip.duration / max(1, len(words)), 0.01)
+
+        # Base position
+        base_clip_x, base_clip_y = (
+            base_clip.pos(0) if callable(base_clip.pos) else base_clip.pos
+        )
+        if base_clip_x == "center":
+            base_clip_x = (video_width - base_clip.w) / 2
+        if base_clip_y == "center":
+            base_clip_y = (video_height - base_clip.h) / 2
+        # logger.info(
+        #     f"base subtitle position {base_clip_x}, {base_clip_y}, base subtitle duration {base_clip.duration}"
+        # )
+
+        lines = base_clip.text.split("\n")
+        word_positions = {}
+        y_offset = 0
+
+        space_width = TextClip(text=" ", font=font_path, font_size=params.font_size).w
+
+        for line in lines:
+            words_in_line = line.split()
+            x_offset = 0
+            for word in words_in_line:
+                word_positions[word] = (x_offset, y_offset)
+                x_offset += (
+                    TextClip(text=word, font=font_path, font_size=params.font_size).w
+                    + space_width
+                )
+            y_offset += params.font_size
+
+        for i, word in enumerate(words):
+            if word not in word_positions:
+                continue
+            x_offset, y_offset = word_positions[word]
+            word_clip = TextClip(
+                text=word,
+                font=font_path,
+                font_size=params.font_size,
+                color=params.text_highlight_color,
+                bg_color=params.text_background_color,
+                stroke_color=params.stroke_color,
+                stroke_width=params.stroke_width,
+            )
+            word_clip = word_clip.with_start(start_time + i * word_duration)
+            word_clip = word_clip.with_end(start_time + (i + 1) * word_duration)
+            word_clip = word_clip.with_duration(word_duration)
+            word_clip = word_clip.with_position(
+                (base_clip_x + x_offset, base_clip_y + y_offset)
+            )
+            # logger.info(
+            #     f"Word: {word}, Start: {word_clip.start}, End: {word_clip.end}, Duration: {word_clip.duration}, Position: {word_clip.pos}"
+            # )
+            word_clips.append(word_clip)
+        return word_clips
 
     video_clip = VideoFileClip(video_path)
     audio_clip = AudioFileClip(audio_path).with_effects(
@@ -295,11 +370,35 @@ def generate_video(
         sub = SubtitlesClip(
             subtitles=subtitle_path, encoding="utf-8", make_textclip=make_textclip
         )
-        text_clips = []
+        # text_clips = []
+        base_clips = []
+        word_clips = []
         for item in sub.subtitles:
-            clip = create_text_clip(subtitle_item=item)
-            text_clips.append(clip)
-        video_clip = CompositeVideoClip([video_clip, *text_clips])
+            base_clip = create_line_text_clip(subtitle_item=item)
+            base_clips.append(base_clip)
+            word_clip = create_word_text_clip(base_clip, subtitle_item=item)
+            word_clips.extend(word_clip)
+            # text_clips.append(
+            #     CompositeVideoClip([base_clip, *word_clips]).with_start(base_clip.start)
+            # )
+
+            # logger.info(
+            #     f"base clip duration: {base_clip.duration}, position: {base_clip.pos}, base clip start {base_clip.start}, base clip end {base_clip.end}"
+            # )
+
+            # for wc in word_clips:
+            #     logger.info(
+            #         f"Word: {wc.text}, Start: {wc.start}, End: {wc.end}, Duration: {wc.duration}, Position: {wc.pos}"
+            #     )
+
+        # logger.info(f"text clips count: {len(text_clips)}")
+        # for i, clip in enumerate(text_clips):
+        #     logger.info(
+        #         f"Text Clip Duration: {clip.duration}, Position: {clip.pos}, Start: {clip.start}, End: {clip.end}"
+        #     )
+
+        video_clip = CompositeVideoClip([video_clip, *base_clips, *word_clips])
+        # logger.info(f"video clip {video_clip}")
 
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
     if bgm_file:
@@ -315,7 +414,28 @@ def generate_video(
         except Exception as e:
             logger.error(f"failed to add bgm: {str(e)}")
 
-    video_clip = video_clip.with_audio(audio_clip)
+    # video_clip = video_clip.with_audio(audio_clip)
+
+    enable_cta = params.enable_cta
+    if enable_cta:
+        cta_text = "Learn more"
+        cta_clip = TextClip(
+            text=cta_text, font=font_path, font_size=70, color="white", bg_color="black"
+        )
+        cta_clip = cta_clip.with_duration(5).with_position("center")
+
+        # Add the CTA button to the video in the last 5 seconds
+        video_duration = video_clip.duration
+        cta_start_time = video_duration - 5
+        cta_clip = cta_clip.with_start(cta_start_time)
+        logger.info(f"Adding CTA clip from {cta_start_time} to {video_duration}")
+
+        # Apply HeadBlur effect to the video clip
+        head_blur_effect = HeadBlur(fx=lambda t: 100, fy=lambda t: 100, radius=500)
+        blurred_video_clip = head_blur_effect.apply(video_clip)
+        # video_clip = CompositeVideoClip([video_clip, cta_clip])
+        video_clip = CompositeVideoClip([blurred_video_clip, cta_clip])
+
     video_clip.write_videofile(
         output_file,
         audio_codec="aac",

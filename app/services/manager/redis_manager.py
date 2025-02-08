@@ -4,7 +4,7 @@ from typing import Dict
 import redis
 
 from app.repositories.gen_tvc import task as tm
-from app.schemas.schemas import VideoParams
+from app.web.api.gen_tvc.schemas import VideoParams
 from app.services.manager.base_manager import TaskManager
 
 FUNC_MAP = {
